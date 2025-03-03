@@ -36,11 +36,11 @@ with st.sidebar:
     if compare_stocks:
         compare_stock_ticker = st.text_input('🔍 Enter Second Stock Ticker:', 'MSFT')
 
-# Fetching data
-st.subheader("📥 Fetching Data...")
-with st.spinner("Loading data..."):
+# Fetching data with a loading indicator
+st.subheader(f"📥 Fetching Data for {user_input}...")
+with st.spinner("Loading data... Please wait ⏳"):
     df = yf.download(user_input, start=start_date, end=end_date)
-st.success("Data loaded successfully!")
+st.success(f"✅ Data for {user_input} loaded successfully!")
 
 # Display data description
 st.subheader('📊 Data Summary')
@@ -56,20 +56,9 @@ plt.legend()
 plt.grid(True)
 st.pyplot(fig)
 
-# Closing Price with 100MA chart
-st.subheader('📉 Closing Price vs Time with 100-Day Moving Average')
-ma100 = df.Close.rolling(100).mean()
-fig = plt.figure(figsize=(12, 6))
-plt.plot(df.Close, label='Closing Price', color='#3498DB')
-plt.plot(ma100, label='100-Day MA', color='#E67E22')
-plt.xlabel("Time")
-plt.ylabel("Price")
-plt.legend()
-plt.grid(True)
-st.pyplot(fig)
-
-# Closing Price with 100MA & 200MA chart
+# Moving Averages
 st.subheader('📉 Closing Price vs Time with 100-Day & 200-Day Moving Averages')
+ma100 = df.Close.rolling(100).mean()
 ma200 = df.Close.rolling(200).mean()
 fig = plt.figure(figsize=(12, 6))
 plt.plot(df.Close, label='Closing Price', color='#3498DB')
@@ -123,7 +112,7 @@ st.pyplot(fig_rsi)
 st.subheader('💬 Sentiment Analysis')
 sia = SentimentIntensityAnalyzer()
 
-# Example news article or social media post
+# Example news analysis
 news_text = f"Recent news about {user_input} indicates a positive outlook due to strong quarterly earnings."
 sentiment_scores = sia.polarity_scores(news_text)
 
@@ -134,30 +123,13 @@ col2.metric("Negative Sentiment", f"{sentiment_scores['neg']:.2f}")
 col3.metric("Neutral Sentiment", f"{sentiment_scores['neu']:.2f}")
 col4.metric("Compound Sentiment", f"{sentiment_scores['compound']:.2f}")
 
-# Optional two-stock comparison
-if compare_stocks:
-    st.subheader(f'📈 Closing Price Comparison: {user_input} vs {compare_stock_ticker}')
-    compare_df = yf.download(compare_stock_ticker, start=start_date, end=end_date)
-    fig_compare = plt.figure(figsize=(12, 6))
-    plt.plot(df.Close, label=user_input, color='#3498DB')
-    plt.plot(compare_df.Close, label=compare_stock_ticker, color='#E74C3C')
-    plt.xlabel("Time")
-    plt.ylabel("Price")
-    plt.legend()
-    plt.grid(True)
-    st.pyplot(fig_compare)
-
 # Splitting data into training and testing sets
-data_training = pd.DataFrame(df['Close'][0:int(len(df)*0.70)])
-data_testing = pd.DataFrame(df['Close'][int(len(df)*0.70): int(len(df))])
-
-# Display training and testing data shapes
-st.write(f"Training Data Shape: {data_training.shape}")
-st.write(f"Testing Data Shape: {data_testing.shape}")
+data_training = df['Close'][0:int(len(df)*0.70)]
+data_testing = df['Close'][int(len(df)*0.70):]
 
 # Scaling data for model input
 scaler = MinMaxScaler(feature_range=(0,1))
-data_training_array = scaler.fit_transform(data_training)
+data_training_array = scaler.fit_transform(data_training.values.reshape(-1,1))
 
 # Load pre-trained model
 model = load_model('keras_model.h5')
@@ -165,7 +137,7 @@ model = load_model('keras_model.h5')
 # Prepare test data for prediction
 past_100_days = data_training.tail(100)
 final_df = pd.concat([past_100_days, data_testing], ignore_index=True)
-input_data = scaler.fit_transform(final_df)
+input_data = scaler.fit_transform(final_df.values.reshape(-1,1))
 
 x_test = []
 y_test = []
@@ -195,37 +167,23 @@ plt.xlabel("Time")
 plt.ylabel("Price")
 plt.title("Stock Price Prediction")
 plt.legend(loc="upper left")
-
-# Adjust x-axis to show actual dates
-test_dates = df.index[int(len(df)*0.7):]  # Extract test data dates
-plt.xticks(
-    ticks=np.linspace(0, len(test_dates) - 1, num=10).astype(int),  # Select evenly spaced ticks
-    labels=test_dates[np.linspace(0, len(test_dates) - 1, num=10).astype(int)].strftime('%Y'),  # Format as year
-    rotation=45  # Rotate labels for better readability
-)
-
 plt.grid(True)
 st.pyplot(fig2)
 
 # Add a section for downloading actual and predicted prices as CSV
 st.subheader("📥 Download Actual and Predicted Prices")
-
-# Create a DataFrame for actual and predicted prices
 results_df = pd.DataFrame({
-    "Date": df.index[int(len(df)*0.7):],  # Use test data dates
+    "Date": df.index[int(len(df)*0.7):],  
     "Actual Price": y_test,
     "Predicted Price": y_predicted.flatten()
 })
 
-# Function to convert DataFrame to CSV format
 @st.cache_data
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# Convert the DataFrame to CSV
 csv_data = convert_df_to_csv(results_df)
 
-# Add a download button
 st.download_button(
     label="📥 Download Results as CSV",
     data=csv_data,
@@ -233,25 +191,13 @@ st.download_button(
     mime="text/csv"
 )
 
-# Calculate RMSE
+# Model Evaluation Metrics
+st.subheader("📊 Model Evaluation Metrics")
 rmse = np.sqrt(mean_squared_error(y_test, y_predicted))
-
-# Calculate MAPE
 mape = mean_absolute_percentage_error(y_test, y_predicted)
-
-# Calculate R²
 r2 = r2_score(y_test, y_predicted)
 
-# Display metrics in Streamlit
-st.subheader("📊 Model Evaluation Metrics")
 col1, col2, col3 = st.columns(3)
-col1.metric("Root Mean Squared Error (RMSE)", f"{rmse:.2f}")
-col2.metric("Mean Absolute Percentage Error (MAPE)", f"{mape * 100:.2f}%")
-col3.metric("R-Squared (R²)", f"{r2:.2f}")
-
-def fetch_news(ticker, api_key):
-    url = f"https://newsapi.org/v2/everything?q={ticker}&apiKey={api_key}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json()['articles']
-    return []
+col1.metric("RMSE", f"{rmse:.2f}")
+col2.metric("MAPE", f"{mape * 100:.2f}%")
+col3.metric("R²", f"{r2:.2f}")
